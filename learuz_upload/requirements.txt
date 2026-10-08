@@ -1,0 +1,6 @@
+aiogram==2.25.1
+deep-translator
+requests
+english-words
+python-dotenv
+gTTS
