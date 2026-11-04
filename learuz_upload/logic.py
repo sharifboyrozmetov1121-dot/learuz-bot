@@ -109,13 +109,9 @@ _bloklangan = {}
 LIMIT_BLOK_SONIYA = 600       # so'rovlar limiti: 10 daqiqa (600 soniya)
 XATO_BLOK_SONIYA = 30         # boshqa xato (tarmoq va h.k.): 30 soniya
 
-def _tarjima_ol(matn: str, y: dict):
-    """Tarjimonlarni ketma-ket sinaydi va birinchi haqiqiy tarjimani qaytaradi.
 
-    Tarjimon so'zni o'zgartirmasdan qaytarsa, bu haqiqiy tarjima hisoblanmaydi:
-    keyingi tarjimon sinab ko'riladi. Hech biri o'zgartira olmasa, shu bir xil
-    natija qaytariladi (masalan, radio, taxi). Hech biri ishlamasa None.
-    """
+def _tarjima_ol(matn: str, y: dict):
+    """Tarjimonlarni ketma-ket sinaydi va birinchi haqiqiy tarjimani qaytaradi."""
     zaxira = None
     for dvigatel in TARJIMONLAR:
         if time.monotonic() < _bloklangan.get(dvigatel, 0):
@@ -159,11 +155,7 @@ class Natija(NamedTuple):
 
 
 def tarjima_qil(matn, yonalish: str = DEFAULT_YONALISH):
-    """Tarjima qiladi va Natija qaytaradi.
-
-    talaffuz_soz — tarjima qilingan so'z, talaffuz_tili — 'uz' yoki 'en'.
-    Xato bo'lsa faqat ok=False va javob to'ldiriladi.
-    """
+    """Tarjima qiladi va Natija qaytaradi."""
     if yonalish not in YONALISHLAR:
         yonalish = DEFAULT_YONALISH
     y = YONALISHLAR[yonalish]
@@ -184,10 +176,9 @@ def tarjima_qil(matn, yonalish: str = DEFAULT_YONALISH):
             natija = kirill_lotin(natija)
         natija = natija.strip()
 
+    # Tuzatilgan qism: Agar inglizchadan o'zbekchaga tarjima qilinsa va so'z o'zgarmasa tekshiriladi
     bir_xil = natija.lower() == matn.lower()
-    # Tarjima so'zning o'ziga teng bo'lsa: ma'lum inglizcha so'z bo'lsa (radio, taxi) to'g'ri,
-    # aks holda so'z noto'g'ri deb hisoblanadi
-    if bir_xil and not (yonalish == 'en_uz' and matn_inglizcha_mi(matn)):
+    if bir_xil and yonalish == 'en_uz' and not matn_inglizcha_mi(matn):
         return Natija(False, y['xato'])
 
     if yangi:
