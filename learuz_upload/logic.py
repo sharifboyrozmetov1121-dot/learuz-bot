@@ -106,9 +106,8 @@ def matn_togri_mi(matn: str, yonalish: str = DEFAULT_YONALISH) -> bool:
 
 # Xato bergan tarjimonni vaqtincha o'tkazib yuborish: {tarjimon: qaysi vaqtgacha}
 _bloklangan = {}
-LIMIT_BLOK_SONIYA = 10 * 60   # so'rovlar limiti: 10 daqiqa
+LIMIT_BLOK_SONIYA = 600       # so'rovlar limiti: 10 daqiqa (600 soniya)
 XATO_BLOK_SONIYA = 30         # boshqa xato (tarmoq va h.k.): 30 soniya
-
 
 def _tarjima_ol(matn: str, y: dict):
     """Tarjimonlarni ketma-ket sinaydi va birinchi haqiqiy tarjimani qaytaradi.
