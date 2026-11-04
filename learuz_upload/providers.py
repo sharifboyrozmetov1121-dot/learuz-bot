@@ -1,29 +1,27 @@
-from deep_translator import GoogleTranslator
+from deep_translator import GoogleTranslator, MyMemoryTranslator, PonsTranslator
 
 class GoogleGtxTranslator:
-    """Eski nomlar xato bermasligi uchun saqlab qolingan klass"""
+    """Google gtx orqali tarjima"""
     def __init__(self, source: str, target: str):
         self.source = 'en' if 'eng' in source.lower() else 'uz'
         self.target = 'uz' if 'uz' in target.lower() else 'en'
 
     def translate(self, matn: str) -> str:
-        try:
-            res = GoogleTranslator(source=self.source, target=self.target).translate(matn)
-            return res if res else matn
-        except Exception as e:
-            print(f"Tarjima xatosi: {e}")
-            raise e
+        # To'g'ridan-to'g'ri deep-translator ning GoogleTranslator'idan foydalanamiz
+        res = GoogleTranslator(source=self.source, target=self.target).translate(matn)
+        if not res:
+            raise Exception("Bo'sh javob")
+        return res
 
 class LingvaTranslator:
-    """Eski Lingva o'rniga ham deep-translator ishlaydigan klass"""
+    """Lingva o'rniga PonsTranslator (limitga chidamliroq)"""
     def __init__(self, source: str, target: str):
         self.source = 'en' if 'eng' in source.lower() else 'uz'
         self.target = 'uz' if 'uz' in target.lower() else 'en'
 
     def translate(self, matn: str) -> str:
-        try:
-            res = GoogleTranslator(source=self.source, target=self.target).translate(matn)
-            return res if res else matn
-        except Exception as e:
-            print(f"Tarjima xatosi: {e}")
-            raise e
+        # Pons lug'ati orqali tarjima qilish
+        res = PonsTranslator(source=self.source, target=self.target).translate(matn)
+        if not res:
+            raise Exception("Bo'sh javob")
+        return res
