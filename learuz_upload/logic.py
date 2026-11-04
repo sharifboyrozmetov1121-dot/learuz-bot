@@ -3,6 +3,7 @@ import logging
 import re
 import time
 from typing import NamedTuple, Optional
+import requests
 
 from deep_translator import GoogleTranslator, MyMemoryTranslator
 from english_words import get_english_words_set
@@ -42,7 +43,7 @@ YONALISHLAR = {
 XATO_JAVOB = YONALISHLAR['en_uz']['xato']
 TARJIMA_XATO = "Tarjima qilishda xatolik yuz berdi. Birozdan keyin qayta urinib ko'ring."
 
-# Tarjimonlar tartibi: biri ishlamasa (limit, tarmoq xatosi) keyingisi sinab ko'riladi
+# Tarjimonlar tartibi
 TARJIMONLAR = (GoogleTranslator, GoogleGtxTranslator, LingvaTranslator, MyMemoryTranslator)
 
 KIRILL_LOTIN = {
@@ -55,7 +56,7 @@ KIRILL_LOTIN = {
 
 
 def kirill_lotin(matn: str) -> str:
-    """O'zbekcha kirill yozuvini lotinga o'giradi (tarjimon ba'zan kirillda qaytaradi)."""
+    """O'zbekcha kirill yozuvini lotinga o'giradi."""
     natija = []
     for ch in matn:
         kichik = ch.lower()
@@ -68,12 +69,12 @@ def kirill_lotin(matn: str) -> str:
 
 
 def apostrof_tuzat(matn: str) -> str:
-    """o‘, g‘, oʻ kabi turli apostroflarni oddiy ' ga almashtiradi."""
+    """Turli apostroflarni oddiy ' ga almashtiradi."""
     return matn.translate(str.maketrans({'ʻ': "'", '’': "'", '‘': "'", '`': "'", 'ʼ': "'"}))
 
 
 def _asoslar(soz: str):
-    """So'zning mumkin bo'lgan asosiy shakllari (ko'plik, -ing, -ed va h.k.)."""
+    """So'zning mumkin bo'lgan asosiy shakllari."""
     yield soz
     if soz.endswith('ies'):
         yield soz[:-3] + 'y'
@@ -87,7 +88,7 @@ def _asoslar(soz: str):
 
 
 def inglizcha_mi(soz: str) -> bool:
-    """So'z inglizcha ekanini tekshiradi (ko'plik va boshqa shakllari bilan)."""
+    """So'z inglizcha ekanini tekshiradi."""
     return any(asos in ENGLISH_WORDS for asos in _asoslar(soz.lower()))
 
 
@@ -97,65 +98,67 @@ def matn_inglizcha_mi(matn: str) -> bool:
 
 
 def matn_togri_mi(matn: str, yonalish: str = DEFAULT_YONALISH) -> bool:
-    """Matn faqat lotin harflari, bo'shliq, tire va apostrofdan iboratmi."""
+    """Matn to'g'ri tuzilganligini tekshiradi."""
     matn = apostrof_tuzat(matn)
     if not re.fullmatch(r"[A-Za-z' -]+", matn):
         return False
     return any(ch.isalpha() for ch in matn)
 
 
-# Xato bergan tarjimonni vaqtincha o'tkazib yuborish: {tarjimon: qaysi vaqtgacha}
-_bloklangan = {}
-LIMIT_BLOK_SONIYA = 600       # so'rovlar limiti: 10 daqiqa (600 soniya)
-XATO_BLOK_SONIYA = 30         # boshqa xato (tarmoq va h.k.): 30 soniya
-
-
 def _tarjima_ol(matn: str, y: dict):
-    """Tarjimonlarni ketma-ket sinaydi va birinchi haqiqiy tarjimani qaytaradi."""
-    zaxira = None
+    """To'g'ridan-to'g'ri Google GTX va boshqa zaxiralar orqali tarjima qiladi."""
+    url = "https://translate.googleapis.com/translate_a/single"
+    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
+    
+    # 1. Asosiy Google GTX so'rovi
+    try:
+        r = requests.get(
+            url,
+            params={'client': 'gtx', 'sl': y['source'][:2], 'tl': y['target'][:2], 'dt': 't', 'q': matn},
+            headers=headers,
+            timeout=5,
+        )
+        if r.status_code == 200:
+            qismlar = [p[0] for p in r.json()[0] if p and p[0]]
+            natija = ''.join(qismlar).strip()
+            if natija:
+                if y['target'] == 'uzbek':
+                    natija = kirill_lotin(natija)
+                return natija
+    except Exception as e:
+        logging.warning("Google GTX xatosi: %s", e)
+
+    # 2. Zaxira tarjimonlar
     for dvigatel in TARJIMONLAR:
-        if time.monotonic() < _bloklangan.get(dvigatel, 0):
-            continue  # yaqinda xato bergan, hozircha o'tkazib yuboramiz
-
         try:
-            natija = dvigatel(source=y['source'], target=y['target']).translate(matn)
-        except Exception as xato:
-            if type(xato).__name__ == 'TooManyRequests':
-                _bloklangan[dvigatel] = time.monotonic() + LIMIT_BLOK_SONIYA
-                logging.warning("%s so'rovlar limitiga tushdi, bir muddat o'tkazib yuboriladi",
-                                dvigatel.__name__)
-            else:
-                _bloklangan[dvigatel] = time.monotonic() + XATO_BLOK_SONIYA
-                logging.warning("%s tarjima qila olmadi: %s", dvigatel.__name__, xato)
+            res = dvigatel(source=y['source'], target=y['target']).translate(matn)
+            if res:
+                natija = apostrof_tuzat(html.unescape(res))
+                if y['target'] == 'uzbek':
+                    natija = kirill_lotin(natija)
+                if natija.strip():
+                    return natija.strip()
+        except Exception:
             continue
 
-        if not natija or 'MYMEMORY WARNING' in natija.upper():
-            continue
-        # Tarjimonlar ba'zan HTML belgilari (&#39; &quot;) va turli apostroflar qaytaradi
-        natija = apostrof_tuzat(html.unescape(natija))
-        if natija.strip().lower() == matn.lower():
-            zaxira = zaxira or natija
-            continue
-        return natija
-    return zaxira
+    return None
 
 
 def talaffuz_uchun_tozala(matn: str):
-    """Talaffuzga yuboriladigan matnning chetidagi nuqta, vergul, qo'shtirnoq kabilarni olib tashlaydi."""
+    """Talaffuz uchun matnni tozalaydi."""
     toza = re.sub(r"^[^\w]+|[^\w]+$", "", (matn or "").strip())
     return toza or None
 
 
 class Natija(NamedTuple):
-    """Tarjima natijasi."""
     ok: bool
     javob: str
-    talaffuz_soz: Optional[str] = None    # tarjima qilingan so'z
-    talaffuz_tili: Optional[str] = None   # 'uz' yoki 'en'
+    talaffuz_soz: Optional[str] = None
+    talaffuz_tili: Optional[str] = None
 
 
 def tarjima_qil(matn, yonalish: str = DEFAULT_YONALISH):
-    """Tarjima qiladi va Natija qaytaradi."""
+    """Tarjima qilish jarayonini boshqaradi."""
     if yonalish not in YONALISHLAR:
         yonalish = DEFAULT_YONALISH
     y = YONALISHLAR[yonalish]
@@ -172,22 +175,18 @@ def tarjima_qil(matn, yonalish: str = DEFAULT_YONALISH):
         natija = _tarjima_ol(kalit, y)
         if natija is None:
             return Natija(False, TARJIMA_XATO)
-        if y['target'] == 'uzbek':
-            natija = kirill_lotin(natija)
         natija = natija.strip()
 
-    # Tuzatilgan qism: Agar inglizchadan o'zbekchaga tarjima qilinsa va so'z o'zgarmasa tekshiriladi
     bir_xil = natija.lower() == matn.lower()
     if bir_xil and yonalish == 'en_uz' and not matn_inglizcha_mi(matn):
         return Natija(False, y['xato'])
 
     if yangi:
-        cache.saqla(yonalish, kalit, natija)  # faqat to'g'ri tarjimalar saqlanadi
+        cache.saqla(yonalish, kalit, natija)
 
     javob = f"{y['src_flag']} {matn} → {y['dst_flag']} {natija}"
     return Natija(True, javob, talaffuz_uchun_tozala(natija), y['tts_til'])
 
 
 def javob_tayyorla(matn, yonalish: str = DEFAULT_YONALISH) -> str:
-    """Faqat javob matnini qaytaradi."""
     return tarjima_qil(matn, yonalish).javob
